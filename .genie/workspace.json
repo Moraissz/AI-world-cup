@@ -1,0 +1,10 @@
+{
+  "name": "agent-word-cup",
+  "agents": {
+    "defaults": {}
+  },
+  "tmux": {
+    "socket": "genie"
+  },
+  "sdk": {}
+}
