@@ -8,7 +8,7 @@
 
 The `world-cup-specialist` agent needs to receive WhatsApp messages via the running Omni bridge, query the Football Stats API for head-to-head data, and respond with predictions — all automatically.
 
-Omni is already running (`omni-api`, PID 67085) and receiving real messages from a WhatsApp group. The FastAPI backend is already built with `/football/head-to-head` and `/football/predict` endpoints. The missing piece is connecting the agent to Omni so it processes and answers messages.
+Omni is already running (`omni-api`, PID 67085) and receiving real messages from a WhatsApp group. The FastAPI backend is already built with the `/football/head-to-head` endpoint. The missing piece is connecting the agent to Omni so it processes and answers messages.
 
 ## Acceptance Criteria
 

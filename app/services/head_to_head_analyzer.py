@@ -38,7 +38,7 @@ class HeadToHeadAnalyzer:
         if not matches:
             return self._create_empty_summary(team_a, team_b)
 
-        return self._process_match_data(matches, team_a, team_b)
+        return self._process_match_data(matches, team_a, team_b, team_a_id, team_b_id)
 
     def _create_empty_summary(self, team_a: str, team_b: str) -> dict:
         return {
@@ -54,7 +54,7 @@ class HeadToHeadAnalyzer:
             "recent_encounters": [],
         }
 
-    def _process_match_data(self, matches: list, team_a: str, team_b: str) -> dict:
+    def _process_match_data(self, matches: list, team_a: str, team_b: str, team_a_id: int, team_b_id: int) -> dict:
         team_a_wins = 0
         team_b_wins = 0
         draws = 0
@@ -80,12 +80,8 @@ class HeadToHeadAnalyzer:
             if home_goals is None or away_goals is None:
                 continue
 
-            is_a_home = home_name == team_a_lower or (
-                home.get("id") == self._get_team_id(team_a)
-            )
-            is_b_home = home_name == team_b_lower or (
-                home.get("id") == self._get_team_id(team_b)
-            )
+            is_a_home = home_name == team_a_lower or home.get("id") == team_a_id
+            is_b_home = home_name == team_b_lower or home.get("id") == team_b_id
 
             if is_a_home:
                 team_a_goals_scored += home_goals
