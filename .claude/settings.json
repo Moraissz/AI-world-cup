@@ -1,5 +1,5 @@
 {
   "permissions": {
-    "allow": ["Bash(curl:*)", "Bash(genie agent brief:*)", "Bash(omni done:*)"]
+    "allow": ["Bash(curl:*)", "Bash(genie agent brief:*)", "Bash(omni done:*)", "Bash(omni *)"]
   }
 }

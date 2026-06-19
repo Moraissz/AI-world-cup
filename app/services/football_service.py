@@ -1,14 +1,35 @@
+from datetime import date
+from typing import List, Optional
+
 from app.integrations.football_api_client import FootballApiClient
+from app.integrations.football_data_client import FootballDataClient
+from app.models.football_base import (
+    GroupStanding,
+    Match,
+    MatchScore,
+    TeamStanding,
+    TopScorer, MatchStatus,
+)
+from app.models.football_response import (
+    MatchesResponse,
+    StandingsResponse,
+    TopScorersResponse,
+)
 
 
-class HeadToHeadAnalyzer:
+class FootballService:
 
-    def __init__(self, api_client: FootballApiClient):
-        self.api_client = api_client
+    def __init__(
+        self,
+        football_io_sports_client: FootballApiClient,
+        football_data_org_client: FootballDataClient,
+    ):
+        self.football_io_sports_client = football_io_sports_client
+        self.football_data_org_client = football_data_org_client
 
     async def _get_team_id(self, team_name: str) -> int:
 
-        results = await self.api_client.search_team_id(team_name)
+        results = await self.football_io_sports_client.search_team_id(team_name)
 
         if not results:
             raise ValueError(f"Seleção '{team_name}' não encontrada")
@@ -17,7 +38,7 @@ class HeadToHeadAnalyzer:
         for result in results:
             team = result.get("team", {})
             if team.get("national") is True:
-                team_id = team.get("id")
+                team_id: int = team.get("id")
                 break
 
         if not team_id:
@@ -32,7 +53,9 @@ class HeadToHeadAnalyzer:
         team_a_id = await self._get_team_id(team_a)
         team_b_id = await self._get_team_id(team_b)
 
-        raw_data = await self.api_client.fetch_head_to_head(team_a_id, team_b_id)
+        raw_data = await self.football_io_sports_client.fetch_head_to_head(
+            team_a_id, team_b_id
+        )
         matches = raw_data.get("response", [])
 
         if not matches:
@@ -54,7 +77,9 @@ class HeadToHeadAnalyzer:
             "recent_encounters": [],
         }
 
-    def _process_match_data(self, matches: list, team_a: str, team_b: str, team_a_id: int, team_b_id: int) -> dict:
+    def _process_match_data(
+        self, matches: list, team_a: str, team_b: str, team_a_id: int, team_b_id: int
+    ) -> dict:
         team_a_wins = 0
         team_b_wins = 0
         draws = 0
@@ -134,3 +159,79 @@ class HeadToHeadAnalyzer:
         if not date_string:
             return ""
         return date_string.split("T")[0]
+
+    async def get_standings(self) -> StandingsResponse:
+        data = await self.football_data_org_client.fetch_standings()
+        groups = []
+        for entry in data.get("standings", []):
+            if entry.get("type") != "TOTAL":
+                continue
+            group_name = entry.get("group", "")
+            team_standings = [
+                TeamStanding(
+                    position=row["position"],
+                    team=row["team"]["name"],
+                    played=row["playedGames"],
+                    won=row["won"],
+                    draw=row["draw"],
+                    lost=row["lost"],
+                    goals_for=row["goalsFor"],
+                    goals_against=row["goalsAgainst"],
+                    goal_difference=row["goalDifference"],
+                    points=row["points"],
+                )
+                for row in entry.get("table", [])
+            ]
+            groups.append(GroupStanding(group=group_name, standings=team_standings))
+        return StandingsResponse(groups=groups)
+
+    async def get_matches(
+        self,
+        teams: Optional[List[str]] = None,
+        date_from: Optional[date] = None,
+        date_to: Optional[date] = None,
+        status: Optional[MatchStatus] = None,
+    ) -> MatchesResponse:
+
+        data = await self.football_data_org_client.fetch_matches(
+            date_from=date_from, date_to=date_to, status=status
+        )
+        matches = []
+        for m in data.get("matches", []):
+            home_name = m.get("homeTeam", {}).get("name") or ""
+            away_name = m.get("awayTeam", {}).get("name") or ""
+
+            if teams and not any(
+                t.lower() in (home_name.lower(), away_name.lower()) for t in teams
+            ):
+                continue
+
+            score_data = m.get("score", {}).get("fullTime", {})
+            matches.append(
+                Match(
+                    utc_date=m.get("utcDate", ""),
+                    home_team=home_name,
+                    away_team=away_name,
+                    score=MatchScore(
+                        home=score_data.get("home"), away=score_data.get("away")
+                    ),
+                    status=m.get("status", ""),
+                    stage=m.get("stage", ""),
+                )
+            )
+
+        return MatchesResponse(matches=matches)
+
+    async def get_top_scorers(self) -> TopScorersResponse:
+        data = await self.football_data_org_client.fetch_top_scorers()
+        scorers = [
+            TopScorer(
+                position=i + 1,
+                player=entry.get("player", {}).get("name", ""),
+                team=entry.get("team", {}).get("name", ""),
+                goals=entry.get("goals", 0) or 0,
+                assists=entry.get("assists", 0) or 0,
+            )
+            for i, entry in enumerate(data.get("scorers", []))
+        ]
+        return TopScorersResponse(scorers=scorers)

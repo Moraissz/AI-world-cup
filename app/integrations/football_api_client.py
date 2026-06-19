@@ -1,6 +1,13 @@
 import httpx
-from tenacity import retry, stop_after_attempt, wait_fixed
+from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_fixed
 from fastapi import HTTPException
+
+_retry = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_fixed(2),
+    retry=retry_if_not_exception_type((HTTPException, ValueError)),
+    reraise=True,
+)
 
 
 class FootballApiClient:
@@ -11,7 +18,7 @@ class FootballApiClient:
             "x-rapidapi-host": "v3.football-api-sports.io",
         }
 
-    @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
+    @_retry
     async def search_team_id(self, team_name: str) -> list:
         if not team_name:
             raise ValueError("O nome da seleção é obrigatório.")
@@ -32,7 +39,7 @@ class FootballApiClient:
             data = response.json()
             return data.get("response", [])
 
-    @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
+    @_retry
     async def fetch_head_to_head(self, team_a_id: int, team_b_id: int) -> dict:
 
         if not team_a_id or not team_b_id:

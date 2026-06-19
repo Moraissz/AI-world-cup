@@ -1,0 +1,3 @@
+[submodule "genie"]
+	path = genie
+	url = git@github.com:automagik-dev/genie.git
