@@ -1,15 +1,16 @@
-version: "3.9"
-
 services:
-  api:
-    build: .
+  redis:
+    image: redis:7-alpine
     ports:
-      - "8000:8000"
-    env_file:
-      - .env
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/docs')\""]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
       retries: 3
-      start_period: 15s
+
+volumes:
+  redis_data:
