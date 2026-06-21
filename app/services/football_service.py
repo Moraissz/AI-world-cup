@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date
 from typing import List, Optional
 
@@ -50,8 +51,10 @@ class FootballService:
         if not team_a or not team_b:
             return {}
 
-        team_a_id = await self._get_team_id(team_a)
-        team_b_id = await self._get_team_id(team_b)
+        team_a_id, team_b_id = await asyncio.gather(
+            self._get_team_id(team_a),
+            self._get_team_id(team_b),
+        )
 
         raw_data = await self.football_io_sports_client.fetch_head_to_head(
             team_a_id, team_b_id
@@ -86,6 +89,7 @@ class FootballService:
         team_a_goals_scored = 0
         team_b_goals_scored = 0
         recent_encounters = []
+        played_matches = 0
 
         team_a_lower = team_a.lower()
         team_b_lower = team_b.lower()
@@ -105,6 +109,7 @@ class FootballService:
             if home_goals is None or away_goals is None:
                 continue
 
+            played_matches += 1
             is_a_home = home_name == team_a_lower or home.get("id") == team_a_id
             is_b_home = home_name == team_b_lower or home.get("id") == team_b_id
 
@@ -123,14 +128,10 @@ class FootballService:
                 elif is_b_home:
                     team_b_wins += 1
             else:
-                if not is_a_home and not is_b_home:
-
-                    pass
-
-                if not is_a_home:
-                    team_a_wins += 1
-                elif not is_b_home:
+                if is_a_home:
                     team_b_wins += 1
+                elif is_b_home:
+                    team_a_wins += 1
 
             recent_encounters.append(
                 {
@@ -144,7 +145,8 @@ class FootballService:
 
         return {
             "matchup": f"{team_a} vs {team_b}",
-            "total_matches": len(matches),
+            # played_matches excludes fixtures without a fulltime score, so it differs from len(matches)
+            "total_matches": played_matches,
             "historical_stats": {
                 "team_a_wins": team_a_wins,
                 "team_b_wins": team_b_wins,
