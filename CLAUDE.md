@@ -15,7 +15,7 @@ The stack:
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env  # set FOOTBALL_API_KEY and OMNI_API_KEY
+cp .env.example .env  # set FOOTBALL_IO_SPORTS_API_KEY and OMNI_API_KEY
 make start            # starts Omni (postgres + NATS), genie serve (autopg), and FastAPI
 ```
 
@@ -62,12 +62,17 @@ omni agents list
 
 | Variable | Description |
 |---|---|
-| `FOOTBALL_API_KEY` | API key for api-sports.io |
+| `FOOTBALL_IO_SPORTS_API_KEY` | API key for api-sports.io |
 | `OMNI_API_URL` | Omni API base URL (default: `http://localhost:8882`) |
 | `OMNI_API_KEY` | Omni API authentication key |
 
 ## Architecture notes
 
-- `HeadToHeadAnalyzer` resolves team names to IDs via search, then fetches fixture history.
+- `FootballService` (`app/services/football_service.py`) is the central service layer. It owns:
+  - `generate_summary(team_a, team_b)` — resolves team names to IDs via `FootballApiClient` (api-sports.io), then fetches head-to-head fixture history.
+  - `get_standings()`, `get_matches()`, `get_top_scorers()` — delegate to `FootballDataClient` (football-data.org), the primary source for live Copa 2026 data.
+- `FootballApiClient` (`app/integrations/football_api_client.py`) — wraps api-sports.io; used only for team-ID lookup and h2h fixtures.
+- `FootballDataClient` (`app/integrations/football_data_client.py`) — wraps football-data.org `/v4/competitions/WC/*`; used for standings, match schedule/results, and top scorers.
+- `memory_controller.py` exposes `GET/POST /memory/{chat_id}` backed by Redis (TTL 7 days). The agent loads memory at turn start and saves after composing a response.
 - The agent's HEARTBEAT loop processes inbox messages: identify teams → call API → predict → respond.
 - Responses must be plain text (no markdown) — WhatsApp renders `*` and `#` literally.

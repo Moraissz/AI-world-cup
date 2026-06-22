@@ -56,15 +56,13 @@ cd AI-world-cup
 bash setup.sh
 
 # Fill in .env
-nano .env   # set FOOTBALL_API_KEY, OMNI_API_KEY
+nano .env   # set FOOTBALL_IO_SPORTS_API_KEY, OMNI_API_KEY
 
-# Start everything
+# Start everything (sobe serviços + conecta o agente automaticamente)
 make start
-genie omni handshake
-genie agent register world-cup-specialist --dir agents/world-cup-specialist
-omni instances list   # note <instance-id>
-omni connect <instance-id> world-cup-specialist --mode turn-based --reply-filter all
-make agent-spawn
+
+# Na primeira vez: exibe QR code — escaneie com WhatsApp → Dispositivos Vinculados
+# Rode make start novamente para confirmar a conexão após escanear
 ```
 
 4. Open Oracle firewall port 8000 (optional — only needed if exposing the API publicly):
@@ -87,7 +85,7 @@ Then update `.env` on the Oracle VM:
 API_BASE_URL=https://ai-world-cup-xxx.up.railway.app
 ```
 
-The agent HEARTBEAT uses `${API_BASE_URL:-http://localhost:8000}` so no code change needed.
+O agente usa `${API_BASE_URL:-http://localhost:8000}` em todas as chamadas curl — nenhuma mudança de código necessária.
 
 ---
 
@@ -125,19 +123,13 @@ pip install -r requirements.txt
 
 # 3. Configure environment
 cp .env.example .env
-# Fill in FOOTBALL_API_KEY, OMNI_API_KEY, and set ANTHROPIC_API_KEY
+# Fill in FOOTBALL_IO_SPORTS_API_KEY, OMNI_API_KEY, and set ANTHROPIC_API_KEY
 
-# 4. Start services
+# 4. Start services + register agent (idempotent)
 make start
 
-# 5. Register agent (first time only)
-genie omni handshake
-genie agent register world-cup-specialist --dir agents/world-cup-specialist
-omni instances list        # note <instance-id>
-omni connect <instance-id> world-cup-specialist --mode turn-based --reply-filter all
-
-# 6. Spawn agent
-make agent-spawn
+# Na primeira vez: exibe QR code — escaneie com WhatsApp → Dispositivos Vinculados
+# Rode make start novamente para confirmar a conexão após escanear
 ```
 
 #### Expose the WhatsApp QR code
@@ -182,10 +174,12 @@ railway up
 # Railway gives you a public URL like https://ai-world-cup.up.railway.app
 ```
 
-Update HEARTBEAT.md tool URL to use the Railway URL:
-```bash
-curl -s "https://ai-world-cup.up.railway.app/football/head-to-head?name_team_a=TEAM_A&name_team_b=TEAM_B"
+Atualize `API_BASE_URL` no `.env` da máquina local:
+```env
+API_BASE_URL=https://ai-world-cup.up.railway.app
 ```
+
+O agente usa `${API_BASE_URL:-http://localhost:8000}` em todas as chamadas curl — nenhuma mudança de código necessária.
 
 Local setup (same as Option A steps 4–6, but without step 1).
 
@@ -214,10 +208,14 @@ The WhatsApp number is tied to the Omni instance running locally. Share the numb
 ## Environment variables for production
 
 ```env
-FOOTBALL_API_KEY=<your api-sports.io key>
+FOOTBALL_IO_SPORTS_API_KEY=<your api-sports.io key>
+FOOTBALL_DATA_ORG_API_KEY=<your football-data.org key>   # optional
 OMNI_API_URL=http://localhost:8882
 OMNI_API_KEY=<your omni key>
+API_BASE_URL=http://localhost:8000   # change if FastAPI is deployed remotely
 ANTHROPIC_API_KEY=<your anthropic key>  # required by Genie/Claude Code
+REDIS_HOST=localhost   # optional; skip for in-memory fallback
+REDIS_PORT=6379
 ```
 
 On a VPS, set these in `.env` and also export `ANTHROPIC_API_KEY` in your shell profile:

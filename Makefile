@@ -1,39 +1,81 @@
-.PHONY: format lint all setup test start start-omni start-api start-genie stop agent-spawn
+# AI World Cup — reproducible, idempotent setup.
+# Each target can be run multiple times without creating duplicates or conflicts.
+.PHONY: install start stop restart status register agent-spawn clean sync-agent reload-agent \
+        test format lint all start-redis start-omni start-genie start-api wire
 
-setup:
-	bash setup.sh
+GENIE := $(HOME)/.local/bin/genie
+OMNI  := $(HOME)/.bun/bin/omni
+VENV  := .venv
 
-test:
-	.venv/bin/pytest -v tests/
+# ---------------------------------------------------------------------------
+# Setup
+# ---------------------------------------------------------------------------
+install:               ## install deps, venv, .env, submodules (idempotent)
+	@bash scripts/setup.sh
 
-format:
-	@echo "Formatando o código com Black..."
-	black .
+# ---------------------------------------------------------------------------
+# Lifecycle
+# ---------------------------------------------------------------------------
+start: start-redis start-omni start-genie start-api wire status  ## bring everything up + wire the agent
 
-lint:
-	@echo "Verificando formatação com Black..."
-	black --check .
+stop:                  ## stop every service + kill agent sessions
+	@bash scripts/stop.sh
 
-all: format lint
+restart: stop start    ## stop then start
+
+status:                ## health snapshot (flags accumulation)
+	@bash scripts/status.sh
+
+clean:                 ## purge stale Omni agent records + orphan sessions (destructive)
+	@bash scripts/clean.sh
+
+# ---------------------------------------------------------------------------
+# Service sub-targets (each idempotent: checks before acting)
+# ---------------------------------------------------------------------------
+start-redis:
+	@docker compose up redis -d --remove-orphans >/dev/null 2>&1 \
+	  && echo "  [ok] Redis up" || echo "  [warn] Redis: verifique o Docker"
 
 start-omni:
-	~/.bun/bin/omni start
-
-start-api:
-	.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 &
+	@$(OMNI) status --json 2>/dev/null | grep -q '"apiStatus": *"healthy"' \
+	  && echo "  [ok] Omni já saudável" \
+	  || $(OMNI) start
 
 start-genie:
-	@~/.autopg/bin/linux-x64/bin/pg_ctl -D ~/.autopg/data -l ~/.autopg/logs/autopg-server-out.log start 2>/dev/null || true
-	@~/.local/bin/genie serve start --headless --daemon 2>/dev/null || true
+	@bash scripts/start-genie.sh
 
-start: start-omni start-genie start-api
-	@echo "Services started. FastAPI: http://localhost:8000/docs | Omni: http://localhost:8882"
+start-api:
+	@curl -sf -o /dev/null http://localhost:8000/docs \
+	  && echo "  [ok] FastAPI já rodando" \
+	  || ( nohup $(VENV)/bin/uvicorn main:app --host 0.0.0.0 --port 8000 \
+	         >/tmp/world-cup-api.log 2>&1 & echo "  [ok] FastAPI iniciado (log: /tmp/world-cup-api.log)" )
 
-stop:
-	-~/.bun/bin/omni stop 2>/dev/null || true
-	-pkill -f "uvicorn main:app" 2>/dev/null || true
-	-~/.local/bin/genie serve stop 2>/dev/null || true
-	-~/.autopg/bin/linux-x64/bin/pg_ctl -D ~/.autopg/data stop 2>/dev/null || true
+# ---------------------------------------------------------------------------
+# Agent wiring
+# ---------------------------------------------------------------------------
+wire register:         ## idempotent Genie<->Omni connection
+	@bash scripts/register-agent.sh
 
-agent-spawn:
-	~/.local/bin/genie spawn world-cup-specialist
+agent-spawn:           ## open a manual debug session (not needed for WhatsApp)
+	@bash scripts/register-agent.sh --spawn-only
+
+sync-agent:            ## sync agents/ -> genie (config + prompt p/ conversas NOVAS)
+	@GENIE_NO_V1_PROMPT=1 $(GENIE) dir sync
+	@echo "  [ok] sincronizado. Conversa NOVA ja usa. P/ chat JA ativo: make reload-agent"
+
+reload-agent:          ## aplica instrucoes editadas a TODOS os chats (reset de sessao)
+	@bash scripts/reload-agent.sh
+
+# ---------------------------------------------------------------------------
+# Dev
+# ---------------------------------------------------------------------------
+test:
+	@$(VENV)/bin/pytest -v tests/
+
+format:
+	@$(VENV)/bin/black .
+
+lint:
+	@$(VENV)/bin/black --check .
+
+all: format lint
