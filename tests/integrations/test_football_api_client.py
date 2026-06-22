@@ -98,3 +98,27 @@ async def test_fetch_head_to_head_502_on_api_error(client):
 async def test_fetch_head_to_head_zero_id_raises_value_error(client):
     with pytest.raises(ValueError, match="obrigatórios"):
         await client.fetch_head_to_head(0, 2)
+
+
+@pytest.mark.asyncio
+async def test_search_team_id_429_no_retry(client):
+    from fastapi import HTTPException
+
+    mock_response = _make_mock_response({}, status_code=429)
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_response) as mock_get:
+        with pytest.raises(HTTPException) as exc_info:
+            await client.search_team_id("Brazil")
+    assert exc_info.value.status_code == 429
+    assert mock_get.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_head_to_head_429_no_retry(client):
+    from fastapi import HTTPException
+
+    mock_response = _make_mock_response({}, status_code=429)
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=mock_response) as mock_get:
+        with pytest.raises(HTTPException) as exc_info:
+            await client.fetch_head_to_head(6, 2)
+    assert exc_info.value.status_code == 429
+    assert mock_get.call_count == 1
