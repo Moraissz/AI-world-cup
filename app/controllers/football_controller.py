@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from dependency_injector.wiring import inject, Provide
 from container import AppContainer
+from app.exceptions import InvalidDateRangeError
 from app.models.football_request import HeadToHeadRequest, MatchRequest
 from app.models.football_response import (
     HeadToHeadResponse,
@@ -58,20 +59,7 @@ async def check_head_to_head(
     params: HeadToHeadRequest = Depends(),
     service: FootballService = Depends(Provide[AppContainer.football_service]),
 ):
-    if not params.name_team_a or not params.name_team_b:
-        raise HTTPException(status_code=400, detail="Parâmetros ausentes.")
-
-    try:
-        summary = await service.generate_summary(params.name_team_a, params.name_team_b)
-        return summary
-    except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(
-            status_code=500, detail="Erro interno ao processar análise."
-        )
+    return await service.generate_summary(params.name_team_a, params.name_team_b)
 
 
 @football_router.get(
@@ -127,14 +115,7 @@ async def check_head_to_head(
 async def get_standings(
     service: FootballService = Depends(Provide[AppContainer.football_service]),
 ):
-    try:
-        return await service.get_standings()
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(
-            status_code=500, detail="Erro interno ao buscar classificação."
-        )
+    return await service.get_standings()
 
 
 @football_router.get(
@@ -184,20 +165,13 @@ async def get_matches(
     service: FootballService = Depends(Provide[AppContainer.football_service]),
 ):
     if (params.date_from is None) != (params.date_to is None):
-        raise HTTPException(
-            status_code=400, detail="date_from e date_to devem ser informados juntos."
-        )
-    try:
-        return await service.get_matches(
-            teams=params.teams,
-            date_from=params.date_from,
-            date_to=params.date_to,
-            status=params.status,
-        )
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(status_code=500, detail="Erro interno ao buscar partidas.")
+        raise InvalidDateRangeError()
+    return await service.get_matches(
+        teams=params.teams,
+        date_from=params.date_from,
+        date_to=params.date_to,
+        status=params.status,
+    )
 
 
 @football_router.get(
@@ -238,11 +212,4 @@ async def get_matches(
 async def get_top_scorers(
     service: FootballService = Depends(Provide[AppContainer.football_service]),
 ):
-    try:
-        return await service.get_top_scorers()
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(
-            status_code=500, detail="Erro interno ao buscar artilheiros."
-        )
+    return await service.get_top_scorers()

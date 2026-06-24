@@ -3,7 +3,7 @@ import json
 
 import redis.asyncio as aioredis
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.params import Depends
 
 from app.models.memory import MemoryResponse, MemoryTurnRequest
@@ -38,11 +38,8 @@ async def get_memory(
     chat_id: str,
     redis: aioredis.Redis = Depends(Provide[AppContainer.redis_client]),
 ):
-    try:
-        data = await _load(redis, chat_id)
-        return MemoryResponse(chat_id=chat_id, **data)
-    except Exception:
-        return MemoryResponse(chat_id=chat_id, last_teams=None, preferred_language=None, history=[])
+    data = await _load(redis, chat_id)
+    return MemoryResponse(chat_id=chat_id, **data)
 
 
 @memory_router.post(
@@ -57,23 +54,20 @@ async def save_memory_turn(
     body: MemoryTurnRequest,
     redis: aioredis.Redis = Depends(Provide[AppContainer.redis_client]),
 ):
-    try:
-        memory = await _load(redis, chat_id)
-        ts = datetime.datetime.utcnow().isoformat()
-        memory["history"].append({"role": "user", "text": body.user_msg, "ts": ts})
-        memory["history"].append({"role": "agent", "text": body.agent_rep, "ts": ts})
-        memory["history"] = memory["history"][-_MAX_HISTORY * 2:]
+    memory = await _load(redis, chat_id)
+    ts = datetime.datetime.utcnow().isoformat()
+    memory["history"].append({"role": "user", "text": body.user_msg, "ts": ts})
+    memory["history"].append({"role": "agent", "text": body.agent_rep, "ts": ts})
+    memory["history"] = memory["history"][-_MAX_HISTORY * 2:]
 
-        if body.team_a and body.team_b:
-            memory["last_teams"] = [body.team_a, body.team_b]
-        if body.preferred_language:
-            memory["preferred_language"] = body.preferred_language
+    if body.team_a and body.team_b:
+        memory["last_teams"] = [body.team_a, body.team_b]
+    if body.preferred_language:
+        memory["preferred_language"] = body.preferred_language
 
-        await redis.set(
-            _redis_key(chat_id),
-            json.dumps(memory, ensure_ascii=False),
-            ex=_TTL,
-        )
-        return MemoryResponse(chat_id=chat_id, **memory)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Erro ao salvar memória.")
+    await redis.set(
+        _redis_key(chat_id),
+        json.dumps(memory, ensure_ascii=False),
+        ex=_TTL,
+    )
+    return MemoryResponse(chat_id=chat_id, **memory)

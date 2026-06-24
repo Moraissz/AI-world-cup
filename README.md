@@ -393,10 +393,52 @@ make test
 # ou: python -m pytest -v tests/
 ```
 
-Cobertura em 8 arquivos: serviço h2h, serviço world-cup, controller h2h,
-controller world-cup, controller memory, rotas, integração api-sports.io e
-integração football-data.org. Todos os testes usam mocks — nenhuma chamada
-real à API externa.
+Cobertura em 10 arquivos: serviço h2h, serviço world-cup, controller h2h,
+controller world-cup, controller memory, rotas, integração api-sports.io,
+integração football-data.org, middleware de correlation ID e sanitização de
+headers. Todos os testes usam mocks — nenhuma chamada real à API externa.
+
+---
+
+## Observabilidade
+
+A API emite logs JSON estruturado para stdout via [structlog](https://www.structlog.org/).
+Cada linha de log inclui os campos `event`, `request_id`, `chat_id`, `timestamp`,
+`level` e campos específicos do contexto (ex.: `provider`, `upstream_status`,
+`latency_ms`, `attempt`).
+
+### Variáveis de ambiente
+
+| Variável     | Default | Descrição                                            |
+| ------------ | ------- | ---------------------------------------------------- |
+| `LOG_LEVEL`  | `INFO`  | Nível de log: `DEBUG`, `INFO`, `WARNING`, `ERROR`    |
+| `LOG_FORMAT` | `json`  | `json` (produção) ou `console` (dev, human-readable) |
+
+### Correlation ID
+
+Todo request recebe um `request_id` (UUID4 gerado automaticamente ou lido do
+header `X-Request-Id` se enviado). O agente pode enviar `X-Chat-Id` para ligar
+o log da API ao chat WhatsApp correspondente. Ambos são propagados
+automaticamente a todos os logs do request via contextvars.
+
+- `X-Request-Id`: gerado se ausente; sempre ecoado no header de resposta.
+- `X-Chat-Id`: opcional; enviado pelo agente para correlação ponta-a-ponta.
+
+Ao final de cada request é emitida uma linha de log `request.completed` com
+`method`, `path`, `status_code` e `latency_ms`.
+
+### Segredos e sanitização
+
+Nenhuma chave de API aparece nos logs. Os headers `x-rapidapi-key`,
+`X-Auth-Token`, `Authorization` e `X-Api-Key` são substituídos por
+`[REDACTED]` pela função `sanitize_headers` em `app/observability/logging_config.py`.
+
+### Erros de autenticação
+
+Quando a football-data.org retorna 401 ou 403, o log interno emite
+`http.auth_error` com `detail: "invalid API key or plan insufficient"` —
+útil para diagnosticar chave expirada ou plano insuficiente sem precisar
+consultar a API. O status retornado ao usuário continua sendo 502.
 
 ---
 

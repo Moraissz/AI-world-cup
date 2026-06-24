@@ -2,6 +2,9 @@ import asyncio
 from datetime import date
 from typing import List, Optional
 
+import structlog
+
+from app.exceptions import TeamNotFoundError
 from app.integrations.football_api_client import FootballApiClient
 from app.integrations.football_data_client import FootballDataClient
 from app.models.football_base import (
@@ -17,6 +20,8 @@ from app.models.football_response import (
     TopScorersResponse,
 )
 
+logger = structlog.get_logger(__name__)
+
 
 class FootballService:
 
@@ -29,11 +34,11 @@ class FootballService:
         self.football_data_org_client = football_data_org_client
 
     async def _get_team_id(self, team_name: str) -> int:
-
         results = await self.football_io_sports_client.search_team_id(team_name)
 
         if not results:
-            raise ValueError(f"Seleção '{team_name}' não encontrada")
+            logger.error("team_not_found", team=team_name)
+            raise TeamNotFoundError(team_name)
 
         team_id = None
         for result in results:
@@ -43,7 +48,8 @@ class FootballService:
                 break
 
         if not team_id:
-            raise ValueError(f"Seleção '{team_name}' não encontrada")
+            logger.error("team_not_found", team=team_name)
+            raise TeamNotFoundError(team_name)
 
         return team_id
 

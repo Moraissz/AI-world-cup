@@ -1,17 +1,31 @@
+import time
 from datetime import date
 
 import httpx
+import structlog
 from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_fixed
 from fastapi import HTTPException
 
 from app.models.football_base import MatchStatus
 from app.utils.cache import cache
 
+logger = structlog.get_logger(__name__)
+
+
+def _log_retry_fdo(retry_state):
+    logger.warning(
+        "http.retry",
+        provider="football-data.org",
+        attempt=retry_state.attempt_number,
+    )
+
+
 _retry = retry(
     stop=stop_after_attempt(3),
     wait=wait_fixed(1),
     retry=retry_if_not_exception_type(HTTPException),
     reraise=True,
+    before_sleep=_log_retry_fdo,
 )
 
 
@@ -44,6 +58,13 @@ class FootballDataClient:
                 status_code=502,
                 detail=f"Erro na API football-data.org. Status: {status_code}",
             )
+        if status_code in (401, 403):
+            logger.error(
+                "http.auth_error",
+                provider="football-data.org",
+                upstream_status=status_code,
+                detail="invalid API key or plan insufficient",
+            )
         if status_code != 200:
             raise HTTPException(
                 status_code=502,
@@ -56,14 +77,22 @@ class FootballDataClient:
     )
     @_retry
     async def fetch_standings(self) -> dict:
+        url = f"{self.base_url}/competitions/WC/standings"
+        logger.debug("http.request", provider="football-data.org", url=url)
+        t0 = time.perf_counter()
+
         async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.base_url}/competitions/WC/standings",
-                headers=self.headers,
-                timeout=10.0,
-            )
-            self._handle_error(response.status_code)
-            return response.json()
+            response = await client.get(url, headers=self.headers, timeout=10.0)
+
+        latency_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+        if response.status_code != 200:
+            logger.error("http.error", provider="football-data.org", upstream_status=response.status_code, latency_ms=latency_ms)
+        else:
+            logger.info("http.response", provider="football-data.org", upstream_status=response.status_code, latency_ms=latency_ms)
+
+        self._handle_error(response.status_code)
+        return response.json()
 
     @cache(
         ttl=300,  # 5 min default; live matches handled by _matches_ttl
@@ -80,15 +109,22 @@ class FootballDataClient:
         if status:
             params["status"] = status.value if hasattr(status, "value") else status
 
+        url = f"{self.base_url}/competitions/WC/matches"
+        logger.debug("http.request", provider="football-data.org", url=url, params=params)
+        t0 = time.perf_counter()
+
         async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.base_url}/competitions/WC/matches",
-                headers=self.headers,
-                params=params,
-                timeout=10.0,
-            )
-            self._handle_error(response.status_code)
-            return response.json()
+            response = await client.get(url, headers=self.headers, params=params, timeout=10.0)
+
+        latency_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+        if response.status_code != 200:
+            logger.error("http.error", provider="football-data.org", upstream_status=response.status_code, latency_ms=latency_ms)
+        else:
+            logger.info("http.response", provider="football-data.org", upstream_status=response.status_code, latency_ms=latency_ms)
+
+        self._handle_error(response.status_code)
+        return response.json()
 
     @cache(
         ttl=600,  # 10 min — scorers update after goals
@@ -96,11 +132,19 @@ class FootballDataClient:
     )
     @_retry
     async def fetch_top_scorers(self) -> dict:
+        url = f"{self.base_url}/competitions/WC/scorers"
+        logger.debug("http.request", provider="football-data.org", url=url)
+        t0 = time.perf_counter()
+
         async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.base_url}/competitions/WC/scorers",
-                headers=self.headers,
-                timeout=10.0,
-            )
-            self._handle_error(response.status_code)
-            return response.json()
+            response = await client.get(url, headers=self.headers, timeout=10.0)
+
+        latency_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+        if response.status_code != 200:
+            logger.error("http.error", provider="football-data.org", upstream_status=response.status_code, latency_ms=latency_ms)
+        else:
+            logger.info("http.response", provider="football-data.org", upstream_status=response.status_code, latency_ms=latency_ms)
+
+        self._handle_error(response.status_code)
+        return response.json()

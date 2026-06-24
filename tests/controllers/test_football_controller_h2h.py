@@ -4,6 +4,7 @@ import pytest
 from dependency_injector import providers
 from fastapi.testclient import TestClient
 
+from app.exceptions import TeamNotFoundError
 from main import app
 
 H2H_RESPONSE = {
@@ -59,15 +60,13 @@ def test_head_to_head_missing_team_b_returns_422(client):
     assert r.status_code == 422
 
 
-def test_head_to_head_missing_both_returns_400(client):
+def test_head_to_head_missing_both_returns_422(client):
     r = client.get("/football/head-to-head?name_team_a=&name_team_b=")
-    assert r.status_code == 400
+    assert r.status_code == 422
 
 
 def test_head_to_head_team_not_found_returns_400(service_mock):
-    service_mock.generate_summary = AsyncMock(
-        side_effect=ValueError("Seleção 'XYZ' não encontrada")
-    )
+    service_mock.generate_summary = AsyncMock(side_effect=TeamNotFoundError("XYZ"))
     with app.container.football_service.override(providers.Object(service_mock)):
         r = TestClient(app).get("/football/head-to-head?name_team_a=XYZ&name_team_b=France")
     assert r.status_code == 400
@@ -87,7 +86,9 @@ def test_head_to_head_propagates_http_exception(service_mock):
 def test_head_to_head_unexpected_error_returns_500(service_mock):
     service_mock.generate_summary = AsyncMock(side_effect=RuntimeError("unexpected"))
     with app.container.football_service.override(providers.Object(service_mock)):
-        r = TestClient(app).get("/football/head-to-head?name_team_a=Brazil&name_team_b=France")
+        r = TestClient(app, raise_server_exceptions=False).get(
+            "/football/head-to-head?name_team_a=Brazil&name_team_b=France"
+        )
     assert r.status_code == 500
 
 

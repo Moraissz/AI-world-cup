@@ -172,7 +172,7 @@ def test_get_top_scorers_200(client):
 def test_get_standings_500_on_unexpected_error(service_mock):
     service_mock.get_standings = AsyncMock(side_effect=RuntimeError("unexpected"))
     with app.container.football_service.override(providers.Object(service_mock)):
-        c = TestClient(app)
+        c = TestClient(app, raise_server_exceptions=False)
         response = c.get("/football/world-cup/standings")
     assert response.status_code == 500
 

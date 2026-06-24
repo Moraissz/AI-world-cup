@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.exceptions import TeamNotFoundError
 from app.integrations.football_api_client import FootballApiClient
 from app.services.football_service import FootballService
 
@@ -118,12 +119,13 @@ async def test_generate_summary_empty_history():
 
 
 @pytest.mark.asyncio
-async def test_generate_summary_team_not_found_raises_value_error():
+async def test_generate_summary_team_not_found_raises_team_not_found_error():
     service = _make_service(
         search_results={"Brazil": BRAZIL_SEARCH},
     )
-    with pytest.raises(ValueError, match="não encontrada"):
+    with pytest.raises(TeamNotFoundError) as exc_info:
         await service.generate_summary("Brazil", "Atlantis")
+    assert "não encontrada" in exc_info.value.detail
 
 
 @pytest.mark.asyncio

@@ -10,10 +10,10 @@ class HeadToHeadRequest:
     def __init__(
         self,
         name_team_a: str = Query(
-            ..., description="Nome do time A", examples=["Brazil"]
+            ..., min_length=1, description="Nome do time A", examples=["Brazil"]
         ),
         name_team_b: str = Query(
-            ..., description="Nome do time B", examples=["France"]
+            ..., min_length=1, description="Nome do time B", examples=["France"]
         ),
     ):
         self.name_team_a = name_team_a
