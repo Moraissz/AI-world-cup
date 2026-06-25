@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from app.controllers.football_controller import football_router
 from app.controllers.memory_controller import memory_router
 from app.observability.logging_config import configure_logging
-from app.observability.middleware import CorrelationIdMiddleware
+from app.observability.middleware import CorrelationIdMiddleware, LoggingMiddleware
 from container import AppContainer
 
 configure_logging()
@@ -48,6 +48,7 @@ def create_app() -> FastAPI:
     )
 
     app.container = container
+    app.add_middleware(LoggingMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
     app.include_router(football_router)
     app.include_router(memory_router)
