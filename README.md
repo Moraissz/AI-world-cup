@@ -64,12 +64,12 @@ sequenceDiagram
 flowchart TD
     START([mensagem WhatsApp chega]) --> SPAWN["Genie faz spawn\ndo agente por chat"]
     SPAWN --> S1["Step 1 — GET /memory/{chat_id}\ncarregar histórico e last_teams"]
-    S1 --> S2[Step 2 — Classificar intenção]
-    S2 -->|dois times identificados| S3P["Step 3-PREDICTION\ncurl h2h + matches\nem paralelo"]
-    S2 -->|classificação / grupo| S3S["Step 3-STANDINGS\nGET /world-cup/standings"]
-    S2 -->|agenda / ao vivo / resultado| S3M["Step 3-MATCHES\nGET /world-cup/matches?filtros"]
-    S2 -->|artilharia / gols| S3T["Step 3-TOP-SCORERS\nGET /world-cup/top-scorers"]
-    S2 -->|saudação / ambíguo / erro| S7["Step 7\nboas-vindas ou clarificação"]
+    S1 --> S2["Step 2 — Quais ferramentas?\n(uma mensagem pode usar várias)"]
+    S2 -->|dois times identificados| S3P["Step 3 · Predição\ncurl h2h + matches\nem paralelo"]
+    S2 -->|classificação / grupo| S3S["Step 3 · Standings\nGET /world-cup/standings"]
+    S2 -->|agenda / ao vivo / resultado| S3M["Step 3 · Matches\nGET /world-cup/matches?filtros"]
+    S2 -->|artilharia / gols| S3T["Step 3 · Top-scorers\nGET /world-cup/top-scorers"]
+    S2 -->|saudação / ambíguo / erro| S7["Step 4 · sem dados\nboas-vindas ou clarificação"]
     S3P --> S4[Step 4 — Compor resposta\nem texto plano, sem markdown]
     S3S --> S4
     S3M --> S4
@@ -110,7 +110,9 @@ Cada mensagem WhatsApp é um turn Omni. O agente lê o contexto, processa e fech
 
 **4. Respostas apenas em texto plano**
 O WhatsApp renderiza `*`, `**` e `#` como caracteres literais. Todas as respostas
-são texto plano sem markdown — enforçado no `AGENTS.md`.
+são texto plano sem markdown — enforçado no `AGENTS.md`. O mesmo output contract fixa
+ainda: resposta no idioma detectado do usuário (PT/ES/EN), no máximo 3 parágrafos e
+sempre encerrando com a assinatura `⚽⚽🏆`.
 
 **5. Memória por conversa no Redis via FastAPI**
 Cada remetente WhatsApp tem um registro no Redis com chave
@@ -118,8 +120,18 @@ Cada remetente WhatsApp tem um registro no Redis com chave
 `GET /memory/{chatId}` no início de cada turn para carregar histórico e
 `POST /memory/{chatId}` após responder para persistir. Armazena os últimos 10
 turnos (20 entradas), `last_teams` (últimos dois times discutidos) e
-`preferred_language`. Isso permite o usuário perguntar "e o jogo mais recente
-deles?" sem repetir os nomes dos times.
+`preferred_language`.
+
+A memória persiste em **todas** as intenções (predição, classificação, agenda,
+artilharia, saudação, erro) — não só nas predições. O objetivo é manter o **fio da
+conversa**: assim o usuário pode perguntar "e o artilheiro deles?" depois de "quando o
+Brasil joga?" sem repetir o time, e o idioma sobrevive entre turnos.
+
+O que a memória **não** é: um cache de dados. Standings, placares e artilharia mudam a
+cada jogo, então o agente nunca cita um número vindo do `history` — ele guarda o texto da
+conversa, mas **sempre rebusca os dados ao vivo** dos endpoints a cada turn. O `history`
+serve ao contexto conversacional (resolver "deles", "de novo", o grupo mencionado antes),
+não como fonte de verdade numérica.
 
 **6. Cache com decorator próprio e `redis.asyncio`**
 `app/utils/cache.py` implementa um decorator `@cache(ttl=..., key_builder=...)`
@@ -132,6 +144,43 @@ simplesmente não cacheia — sem erro, sem dependência obrigatória.
 O docker-compose sobe apenas o Redis. O uvicorn roda diretamente no venv via
 `make start`. Evita conflito de porta e simplifica o ciclo de debug.
 
+**8. A predição é do agente, sobre dados reais**
+A API não tem motor de probabilidade — ela entrega dados; o agente combina e prediz.
+As fontes são reais: histórico do confronto (`/head-to-head`, via api-sports.io), forma
+recente na Copa 2026 (`/world-cup/matches?teams=X`, via football-data.org) e, quando
+fundamenta, posição e saldo de gols no grupo (`/world-cup/standings`). O agente pondera
+esses sinais e dá sempre uma inclinação qualitativa fundamentada — nunca um percentual,
+nunca dígitos inventados —, com a força do palpite escalada à evidência:
+
+- **Evidência forte** (ambos os times com jogos na Copa, standings e histórico) → uma
+  inclinação confiante e justificada ("vantagem clara do Brasil, que fez 5 e sofreu 2 no
+  grupo, enquanto a França levou 4 — mas a França tem o ataque mais perigoso").
+- **Evidência fraca** (poucos/nenhum jogo, time fora desta Copa como a Itália) → uma
+  inclinação mais cautelosa, apoiada no que existe ("histórico curto, mas nos confrontos
+  o Brasil levou a melhor").
+
+Sem percentual falso: a API não tem motor de probabilidade, então um "~58%" seria dígito
+inventado. O agente raciocina sobre os dados reais e expressa o palpite como um analista
+humano, sempre com qualificador de incerteza e nunca afirmando certeza. A lógica vive no
+prompt (`AGENTS.md`), não em código — por isso é ajustável sem deploy.
+
+**9. Orquestração: o agente conhece as 4 ferramentas e combina conforme a mensagem**
+As ferramentas (head-to-head, matches, standings, top-scorers) são independentes e o
+agente escolhe quais usar por mensagem — sem usar todas à força, sem se limitar a uma
+quando mais agrega. Uma mensagem pode acionar várias numa só resposta: "Brasil x França,
+e como tá o grupo deles?" retorna predição **e** standings do grupo no mesmo turn.
+Perguntas diretas sobre jogador ("quantos gols o Mbappé fez?") usam top-scorers e
+localizam o jogador no ranking, respondendo com graça se ele não estiver na lista.
+
+**10. Normalização de nomes de time na camada de serviço**
+O agente traduz nomes para o inglês oficial da FIFA, mas é um LLM e às vezes envia a
+grafia nativa ("França", "Coreia do Sul"). Como o filtro de `matches` é igualdade exata e
+a busca de time espera inglês, `app/utils/team_names.py::normalize_team_name` é a rede
+determinística: mapeia grafias PT/ES/FR comuns (sem acento, idempotente para inglês) e
+devolve o original quando não conhece o alias. Só corrige ou não altera — nunca mapeia
+para um time diferente, então não cria match errado. O prompt mantém só os poucos casos
+clássicos como referência.
+
 ---
 
 ## Configuração
@@ -143,7 +192,7 @@ O docker-compose sobe apenas o Redis. O uvicorn roda diretamente no venv via
 - Genie CLI v4: instalado em `~/.local/bin/genie`
 - Omni CLI v2: instalado em `~/.bun/bin/omni`
 - Chave de API do [api-sports.io](https://api-sports.io) (obrigatória)
-- Chave de API do [football-data.org](https://www.football-data.org) (opcional)
+- Chave de API do [football-data.org](https://www.football-data.org) (obrigatória)
 
 ### Setup (uma vez)
 
@@ -158,6 +207,7 @@ Após o script, preencha o `.env`:
 
 ```env
 FOOTBALL_IO_SPORTS_API_KEY=sua_chave_api_sports_io
+FOOTBALL_DATA_ORG_API_KEY=sua_chave_football_data_org
 OMNI_API_KEY=sua_chave_omni          # omni config show
 ```
 
@@ -166,13 +216,13 @@ OMNI_API_KEY=sua_chave_omni          # omni config show
 | Variável                      | Obrigatória | Descrição                                                          |
 | ----------------------------- | ----------- | ------------------------------------------------------------------ |
 | `FOOTBALL_IO_SPORTS_API_KEY`  | Sim         | Chave para api-sports.io (h2h e busca de time)                     |
-| `FOOTBALL_DATA_ORG_API_KEY`   | Não         | Chave para football-data.org (standings, matches, scorers)         |
+| `FOOTBALL_DATA_ORG_API_KEY`   | Sim         | Chave para football-data.org (standings, matches, scorers)         |
 | `OMNI_API_KEY`                | Sim         | Chave de autenticação do Omni (`omni config show`)                 |
-| `OMNI_API_URL`                | Não         | URL base do Omni (padrão: `http://localhost:8882`)                 |
-| `API_BASE_URL`                | Não         | URL da FastAPI usada pelo agente (padrão: `http://localhost:8000`) |
-| `REDIS_HOST`                  | Não         | Host do Redis (cache e memória em memória se ausente)              |
-| `REDIS_PORT`                  | Não         | Porta do Redis (padrão: `6379`)                                    |
-| `REDIS_PASSWORD`              | Não         | Senha do Redis (padrão: vazio para Redis local)                    |
+| `OMNI_API_URL`                | Sim         | URL base do Omni (padrão: `http://localhost:8882`)                 |
+| `API_BASE_URL`                | Sim         | URL da FastAPI usada pelo agente (padrão: `http://localhost:8000`) |
+| `REDIS_HOST`                  | Sim         | Host do Redis (cache e memória em memória se ausente)              |
+| `REDIS_PORT`                  | Sim         | Porta do Redis (padrão: `6379`)                                    |
+| `REDIS_PASSWORD`              | Sim         | Senha do Redis (padrão: vazio para Redis local)                    |
 
 ---
 
@@ -236,7 +286,7 @@ make restart
 ### Atualizar as instruções do agente
 
 O prompt do agente é o `AGENTS.md` — um único arquivo que contém o loop de turn
-completo (Steps 1–8), persona e princípios. Como aplicar uma edição depende do que
+completo (Steps 1–4), persona e princípios. Como aplicar uma edição depende do que
 mudou:
 
 - **Mudou a FastAPI** (novo endpoint que o agente já chama): o agente faz `curl`
@@ -446,7 +496,7 @@ consultar a API. O status retornado ao usuário continua sendo 502.
 
 | Arquivo                                       | Função                                                                   |
 | --------------------------------------------- | ------------------------------------------------------------------------ |
-| `agents/world-cup-specialist/AGENTS.md`       | Prompt completo: loop de turn (Steps 1–8), persona, princípios e constraints. Arquivo único, sem imports externos. |
+| `agents/world-cup-specialist/AGENTS.md`       | Prompt completo: loop de turn (Steps 1–4), persona, princípios e constraints. Arquivo único, sem imports externos. |
 | `agents/world-cup-specialist/agent.yaml`      | Config do Genie: `model: sonnet`, `promptMode: append`                   |
 | `scripts/setup.sh`                            | Install idempotente (`make install`)                                     |
 | `scripts/register-agent.sh`                   | Conexão Genie ↔ Omni idempotente (`make wire`)                           |

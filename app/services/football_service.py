@@ -19,6 +19,7 @@ from app.models.football_response import (
     StandingsResponse,
     TopScorersResponse,
 )
+from app.utils.team_names import normalize_team_name
 
 logger = structlog.get_logger(__name__)
 
@@ -34,6 +35,9 @@ class FootballService:
         self.football_data_org_client = football_data_org_client
 
     async def _get_team_id(self, team_name: str) -> int:
+        # Map native/accented spellings ("França", "Coreia do Sul") to the English name
+        # api-sports expects before searching; idempotent for names already in English.
+        team_name = normalize_team_name(team_name)
         results = await self.football_io_sports_client.search_team_id(team_name)
 
         if not results:
@@ -204,13 +208,19 @@ class FootballService:
         data = await self.football_data_org_client.fetch_matches(
             date_from=date_from, date_to=date_to, status=status
         )
+        # football-data.org returns official English names and the filter below is exact
+        # equality, so a native spelling would silently match nothing — normalize first.
+        normalized_teams = (
+            [normalize_team_name(t) for t in teams] if teams else None
+        )
         matches = []
         for m in data.get("matches", []):
             home_name = m.get("homeTeam", {}).get("name") or ""
             away_name = m.get("awayTeam", {}).get("name") or ""
 
-            if teams and not any(
-                t.lower() in (home_name.lower(), away_name.lower()) for t in teams
+            if normalized_teams and not any(
+                t.lower() in (home_name.lower(), away_name.lower())
+                for t in normalized_teams
             ):
                 continue
 
