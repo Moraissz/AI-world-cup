@@ -76,3 +76,4 @@ omni agents list
 - `memory_controller.py` exposes `GET/POST /memory/{chat_id}` backed by Redis (TTL 7 days). The agent loads memory at turn start and saves after composing a response.
 - The agent's HEARTBEAT loop processes inbox messages: identify teams → call API → predict → respond.
 - Responses must be plain text (no markdown) — WhatsApp renders `*` and `#` literally.
+- `.claude/agents/world-cup-specialist.md` is a symlink → `agents/world-cup-specialist/AGENTS.md`. Required for `claude --agent world-cup-specialist` to resolve (claude ≥ 2.1.191 validates `--agent` against `.claude/agents/`; it no longer auto-materialises genie team leaders from `--team-name/--agent-id`). Do not delete — the WhatsApp agent goes silent without it.

@@ -1,0 +1,1 @@
+../../agents/world-cup-specialist/AGENTS.md

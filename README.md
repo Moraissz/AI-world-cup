@@ -172,6 +172,15 @@ e como tá o grupo deles?" retorna predição **e** standings do grupo no mesmo 
 Perguntas diretas sobre jogador ("quantos gols o Mbappé fez?") usam top-scorers e
 localizam o jogador no ranking, respondendo com graça se ele não estiver na lista.
 
+**11. `.claude/agents/` — symlink que torna o agente resolvível pelo claude**
+O genie omni-bridge faz spawn do agente por chat com `claude --agent world-cup-specialist`.
+A partir do claude **2.1.191**, essa flag valida contra `.claude/agents/` (e `~/.claude/agents/`);
+o mecanismo anterior — materializar o agente-líder do team via `--team-name/--agent-id` — foi
+removido. `.claude/agents/world-cup-specialist.md` é um symlink para
+`agents/world-cup-specialist/AGENTS.md`: mantém uma única fonte de verdade para o prompt e
+garante que o claude resolve o agente a qualquer versão ≥ 2.1.191. Apagar esse arquivo faz o
+spawn falhar silenciosamente (a janela tmux nasce e morre em zsh sem responder).
+
 **10. Normalização de nomes de time na camada de serviço**
 O agente traduz nomes para o inglês oficial da FIFA, mas é um LLM e às vezes envia a
 grafia nativa ("França", "Coreia do Sul"). Como o filtro de `matches` é igualdade exata e
@@ -504,6 +513,7 @@ consultar a API. O status retornado ao usuário continua sendo 502.
 | `scripts/reload-agent.sh`                     | Reset de sessões (`make reload-agent`)                                   |
 | `scripts/status.sh` · `stop.sh` · `clean.sh` | Ciclo de vida (`make status` / `stop` / `clean`)                         |
 | `scripts/common.sh`                           | Helpers e probes compartilhados (portas, health checks)                  |
+| `.claude/agents/world-cup-specialist.md`      | Symlink → `AGENTS.md`. Torna o agente resolvível por `claude --agent` (≥ 2.1.191). Não apagar. |
 
 ---
 
