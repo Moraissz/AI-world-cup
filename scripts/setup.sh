@@ -38,6 +38,7 @@ if [ ! -f "${REPO_ROOT}/.env" ]; then
   warn "Criado .env a partir de .env.example — preencha:"
   printf '         %s\n' \
     "FOOTBALL_IO_SPORTS_API_KEY  -> https://api-sports.io" \
+    "FOOTBALL_DATA_ORG_API_KEY   -> https://www.football-data.org" \
     "OMNI_API_KEY                -> omni config show" \
     "API_BASE_URL                -> http://localhost:8000"
 else

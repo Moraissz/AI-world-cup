@@ -10,6 +10,7 @@ import pytest
 from dependency_injector import providers
 from fastapi.testclient import TestClient
 
+from app.services.memory_service import MemoryService
 from main import app
 
 
@@ -118,6 +119,61 @@ def test_post_memory_no_teams_preserves_last_teams():
     body = r.json()
     # last_teams should still reflect the last match discussed, not cleared
     assert body["last_teams"] == ["Brazil", "France"]
+
+
+_UNAVAILABLE_DETAIL = (
+    "Memory service unavailable: Redis is required for conversation persistence."
+)
+
+
+def test_get_memory_without_redis_returns_503():
+    """REDIS_HOST unset → None injected → GET fails visibly with 503, never empty."""
+    with app.container.memory_service.override(providers.Object(MemoryService(None))):
+        r = TestClient(app).get("/memory/no-redis-chat")
+    assert r.status_code == 503
+    assert r.json()["detail"] == _UNAVAILABLE_DETAIL
+
+
+def test_post_memory_without_redis_returns_503():
+    """No Redis → POST must not fake success; returns 503."""
+    with app.container.memory_service.override(providers.Object(MemoryService(None))):
+        r = TestClient(app).post(
+            "/memory/no-redis-chat",
+            json={
+                "user_msg": "Brazil vs France",
+                "agent_rep": "h2h ⚽",
+                "team_a": "Brazil",
+                "team_b": "France",
+                "preferred_language": "en",
+            },
+        )
+    assert r.status_code == 503
+    assert r.json()["detail"] == _UNAVAILABLE_DETAIL
+
+
+def test_memory_redis_failure_returns_503_not_500():
+    """Redis present but down → RedisError → 503 (visible), never a generic 500."""
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    redis = AsyncMock()
+
+    async def boom(*args, **kwargs):
+        raise RedisConnectionError("redis down")
+
+    redis.get = boom
+    redis.set = boom
+
+    with app.container.memory_service.override(providers.Object(MemoryService(redis))):
+        client = TestClient(app)
+        r_get = client.get("/memory/down-chat")
+        r_post = client.post(
+            "/memory/down-chat",
+            json={"user_msg": "oi", "agent_rep": "olá ⚽", "team_a": "", "team_b": ""},
+        )
+    assert r_get.status_code == 503
+    assert r_get.json()["detail"] == _UNAVAILABLE_DETAIL
+    assert r_post.status_code == 503
+    assert r_post.json()["detail"] == _UNAVAILABLE_DETAIL
 
 
 def test_post_memory_history_capped_at_20_entries():

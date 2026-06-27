@@ -10,14 +10,21 @@ from app.services.memory_service import MemoryService
 
 
 async def _create_redis(host: str, port: int, password: str):
+    # Redis is optional: when REDIS_HOST is unset, no client is created and
+    # None is injected. Downstream (cache, memory_service) degrade gracefully.
+    if not host:
+        yield None
+        return
     client = aioredis.Redis(
         host=host,
         port=port,
         password=password or None,
         decode_responses=True,
     )
-    yield client
-    await client.aclose()
+    try:
+        yield client
+    finally:
+        await client.aclose()
 
 
 class AppContainer(containers.DeclarativeContainer):
@@ -31,7 +38,7 @@ class AppContainer(containers.DeclarativeContainer):
 
     redis_client = providers.Resource(
         _create_redis,
-        host=os.getenv("REDIS_HOST", "localhost"),
+        host=os.getenv("REDIS_HOST"),
         port=int(os.getenv("REDIS_PORT", 6379)),
         password=os.getenv("REDIS_PASSWORD", ""),
     )

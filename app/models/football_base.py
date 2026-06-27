@@ -53,7 +53,9 @@ class RecentEncounter(BaseModel):
         ..., examples=["FIFA World Cup 2022"], description="Nome da competição"
     )
     score: str = Field(
-        ..., examples=["2-0"], description="Placar no formato 'casa-visitante'"
+        ...,
+        examples=["France 1 - 0 Brazil"],
+        description="Placar com nomes: 'Casa G - G Visitante'",
     )
 
     model_config = ConfigDict(
