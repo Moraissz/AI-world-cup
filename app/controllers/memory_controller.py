@@ -1,30 +1,12 @@
-import datetime
-import json
-
-import redis.asyncio as aioredis
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter
 from fastapi.params import Depends
 
 from app.models.memory import MemoryResponse, MemoryTurnRequest
+from app.services.memory_service import MemoryService
 from container import AppContainer
 
 memory_router = APIRouter(prefix="/memory", tags=["Conversation Memory"])
-
-_KEY_PREFIX = "ai-world-cup-agent:memory:"
-_TTL = 7 * 24 * 60 * 60  # 7 days
-_MAX_HISTORY = 10
-
-
-def _redis_key(chat_id: str) -> str:
-    return f"{_KEY_PREFIX}{chat_id}"
-
-
-async def _load(redis: aioredis.Redis, chat_id: str) -> dict:
-    raw = await redis.get(_redis_key(chat_id))
-    if raw is None:
-        return {"last_teams": None, "preferred_language": None, "history": []}
-    return json.loads(raw)
 
 
 @memory_router.get(
@@ -36,9 +18,9 @@ async def _load(redis: aioredis.Redis, chat_id: str) -> dict:
 @inject
 async def get_memory(
     chat_id: str,
-    redis: aioredis.Redis = Depends(Provide[AppContainer.redis_client]),
+    service: MemoryService = Depends(Provide[AppContainer.memory_service]),
 ):
-    data = await _load(redis, chat_id)
+    data = await service.load(chat_id)
     return MemoryResponse(chat_id=chat_id, **data)
 
 
@@ -52,22 +34,7 @@ async def get_memory(
 async def save_memory_turn(
     chat_id: str,
     body: MemoryTurnRequest,
-    redis: aioredis.Redis = Depends(Provide[AppContainer.redis_client]),
+    service: MemoryService = Depends(Provide[AppContainer.memory_service]),
 ):
-    memory = await _load(redis, chat_id)
-    ts = datetime.datetime.utcnow().isoformat()
-    memory["history"].append({"role": "user", "text": body.user_msg, "ts": ts})
-    memory["history"].append({"role": "agent", "text": body.agent_rep, "ts": ts})
-    memory["history"] = memory["history"][-_MAX_HISTORY * 2:]
-
-    if body.team_a and body.team_b:
-        memory["last_teams"] = [body.team_a, body.team_b]
-    if body.preferred_language:
-        memory["preferred_language"] = body.preferred_language
-
-    await redis.set(
-        _redis_key(chat_id),
-        json.dumps(memory, ensure_ascii=False),
-        ex=_TTL,
-    )
-    return MemoryResponse(chat_id=chat_id, **memory)
+    data = await service.save_turn(chat_id, body)
+    return MemoryResponse(chat_id=chat_id, **data)

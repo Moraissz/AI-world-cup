@@ -6,6 +6,7 @@ from dependency_injector import containers, providers
 from app.integrations.football_api_client import FootballApiClient
 from app.integrations.football_data_client import FootballDataClient
 from app.services.football_service import FootballService
+from app.services.memory_service import MemoryService
 
 
 async def _create_redis(host: str, port: int, password: str):
@@ -43,6 +44,11 @@ class AppContainer(containers.DeclarativeContainer):
     football_data_org_client = providers.Singleton(
         FootballDataClient,
         api_key=os.getenv("FOOTBALL_DATA_ORG_API_KEY", ""),
+        redis_client=redis_client,
+    )
+
+    memory_service = providers.Singleton(
+        MemoryService,
         redis_client=redis_client,
     )
 
