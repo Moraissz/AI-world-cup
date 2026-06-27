@@ -6,6 +6,7 @@ import structlog
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.types import Message
 
 logger = structlog.get_logger(__name__)
 
@@ -78,7 +79,17 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
         req_body = None
         if "application/json" in request.headers.get("content-type", ""):
-            req_body = _parse_body(await request.body())
+            body_bytes = await request.body()
+            req_body = _parse_body(body_bytes)
+
+            # starlette 0.27.0 BaseHTTPMiddleware does not replay the request body:
+            # reading it here drains the receive stream, so the downstream route would
+            # block forever awaiting a body that never arrives. Re-arm the stream so the
+            # handler can read it again (Request.receive returns self._receive).
+            async def _replay() -> Message:
+                return {"type": "http.request", "body": body_bytes, "more_body": False}
+
+            request._receive = _replay
 
         response = await call_next(request)
         latency_ms = round((time.perf_counter() - t0) * 1000, 1)
