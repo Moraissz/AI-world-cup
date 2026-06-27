@@ -82,15 +82,15 @@ flowchart TD
 
 ### Stack
 
-| Camada        | Componente               | Função                                           |
-| ------------- | ------------------------ | ------------------------------------------------ |
-| Canal         | Omni + Baileys           | Bridge WhatsApp, roteamento NATS (:4222)         |
-| Orquestração  | Genie v4                 | Ciclo de vida do agente, inbox, turns            |
-| IA            | Claude Sonnet            | NLU, geração de previsões e respostas            |
-| Dados         | FastAPI + api-sports.io  | Histórico de confrontos diretos (h2h)            |
-| Dados (Copa)  | football-data.org        | Classificação, agenda, resultados, artilharia    |
-| Memória       | Redis + FastAPI /memory  | Histórico de conversa por chat (TTL 7 dias)      |
-| Cache         | Redis (opcional)         | Cache das respostas das APIs externas            |
+| Camada       | Componente              | Função                                        |
+| ------------ | ----------------------- | --------------------------------------------- |
+| Canal        | Omni + Baileys          | Bridge WhatsApp, roteamento NATS (:4222)      |
+| Orquestração | Genie v4                | Ciclo de vida do agente, inbox, turns         |
+| IA           | Claude Sonnet           | NLU, geração de previsões e respostas         |
+| Dados        | FastAPI + api-sports.io | Histórico de confrontos diretos (h2h)         |
+| Dados (Copa) | football-data.org       | Classificação, agenda, resultados, artilharia |
+| Memória      | Redis + FastAPI /memory | Histórico de conversa por chat (TTL 7 dias)   |
+| Cache        | Redis (opcional)        | Cache das respostas das APIs externas         |
 
 ### Decisões arquiteturais
 
@@ -137,8 +137,9 @@ não como fonte de verdade numérica.
 `app/utils/cache.py` implementa um decorator `@cache(ttl=..., key_builder=...)`
 usando `redis.asyncio` diretamente. TTLs por endpoint: 7 dias (busca de time),
 24h (h2h), 5 min (standings e matches), 10 min (top-scorers), 60s (matches
-ao vivo). Se o Redis não estiver disponível (`REDIS_HOST` ausente), o decorator
-simplesmente não cacheia — sem erro, sem dependência obrigatória.
+ao vivo). Redis é obrigatório em runtime. Sem conexão ativa, os endpoints de dados
+e `/memory` retornam 500. Em produção, use uma instância gerenciada
+(ex.: Upstash free tier).
 
 **7. FastAPI como processo local, não container**
 O docker-compose sobe apenas o Redis. O uvicorn roda diretamente no venv via
@@ -172,7 +173,7 @@ e como tá o grupo deles?" retorna predição **e** standings do grupo no mesmo 
 Perguntas diretas sobre jogador ("quantos gols o Mbappé fez?") usam top-scorers e
 localizam o jogador no ranking, respondendo com graça se ele não estiver na lista.
 
-**11. `.claude/agents/` — symlink que torna o agente resolvível pelo claude**
+**10. `.claude/agents/` — symlink que torna o agente resolvível pelo claude**
 O genie omni-bridge faz spawn do agente por chat com `claude --agent world-cup-specialist`.
 A partir do claude **2.1.191**, essa flag valida contra `.claude/agents/` (e `~/.claude/agents/`);
 o mecanismo anterior — materializar o agente-líder do team via `--team-name/--agent-id` — foi
@@ -181,7 +182,7 @@ removido. `.claude/agents/world-cup-specialist.md` é um symlink para
 garante que o claude resolve o agente a qualquer versão ≥ 2.1.191. Apagar esse arquivo faz o
 spawn falhar silenciosamente (a janela tmux nasce e morre em zsh sem responder).
 
-**10. Normalização de nomes de time na camada de serviço**
+**11. Normalização de nomes de time na camada de serviço**
 O agente traduz nomes para o inglês oficial da FIFA, mas é um LLM e às vezes envia a
 grafia nativa ("França", "Coreia do Sul"). Como o filtro de `matches` é igualdade exata e
 a busca de time espera inglês, `app/utils/team_names.py::normalize_team_name` é a rede
@@ -222,16 +223,16 @@ OMNI_API_KEY=sua_chave_omni          # omni config show
 
 ### Variáveis de ambiente
 
-| Variável                      | Obrigatória | Descrição                                                          |
-| ----------------------------- | ----------- | ------------------------------------------------------------------ |
-| `FOOTBALL_IO_SPORTS_API_KEY`  | Sim         | Chave para api-sports.io (h2h e busca de time)                     |
-| `FOOTBALL_DATA_ORG_API_KEY`   | Sim         | Chave para football-data.org (standings, matches, scorers)         |
-| `OMNI_API_KEY`                | Sim         | Chave de autenticação do Omni (`omni config show`)                 |
-| `OMNI_API_URL`                | Sim         | URL base do Omni (padrão: `http://localhost:8882`)                 |
-| `API_BASE_URL`                | Sim         | URL da FastAPI usada pelo agente (padrão: `http://localhost:8000`) |
-| `REDIS_HOST`                  | Sim         | Host do Redis (cache e memória em memória se ausente)              |
-| `REDIS_PORT`                  | Sim         | Porta do Redis (padrão: `6379`)                                    |
-| `REDIS_PASSWORD`              | Sim         | Senha do Redis (padrão: vazio para Redis local)                    |
+| Variável                     | Obrigatória | Descrição                                                          |
+| ---------------------------- | ----------- | ------------------------------------------------------------------ |
+| `FOOTBALL_IO_SPORTS_API_KEY` | Sim         | Chave para api-sports.io (h2h e busca de time)                     |
+| `FOOTBALL_DATA_ORG_API_KEY`  | Sim         | Chave para football-data.org (standings, matches, scorers)         |
+| `OMNI_API_KEY`               | Sim         | Chave de autenticação do Omni (`omni config show`)                 |
+| `OMNI_API_URL`               | Sim         | URL base do Omni (padrão: `http://localhost:8882`)                 |
+| `API_BASE_URL`               | Sim         | URL da FastAPI usada pelo agente (padrão: `http://localhost:8000`) |
+| `REDIS_HOST`                 | Sim         | Host do Redis (cache e memória em memória se ausente)              |
+| `REDIS_PORT`                 | Sim         | Porta do Redis (padrão: `6379`)                                    |
+| `REDIS_PASSWORD`             | Sim         | Senha do Redis (padrão: vazio para Redis local)                    |
 
 ---
 
@@ -253,6 +254,7 @@ cada etapa checa o estado antes de agir. Ao final imprime o `make status`.
 > e rode `make start` novamente para confirmar a conexão.
 >
 > Se precisar rever o QR de uma instância existente:
+>
 > ```bash
 > omni instances list          # obter <instance-id>
 > omni instances qr <instance-id>
@@ -357,7 +359,11 @@ Query: `?name_team_a=Brazil&name_team_b=France`
     "team_b_goals_scored": 14
   },
   "recent_encounters": [
-    { "date": "2022-12-10", "competition": "FIFA World Cup", "score": "France 1 - 0 Brazil" }
+    {
+      "date": "2022-12-10",
+      "competition": "FIFA World Cup",
+      "score": "France 1 - 0 Brazil"
+    }
   ]
 }
 ```
@@ -372,8 +378,18 @@ Classificação por grupos da Copa 2026 (fonte: football-data.org).
     {
       "group": "A",
       "standings": [
-        { "position": 1, "team": "Brazil", "played": 3, "won": 2, "draw": 1,
-          "lost": 0, "goals_for": 5, "goals_against": 2, "goal_difference": 3, "points": 7 }
+        {
+          "position": 1,
+          "team": "Brazil",
+          "played": 3,
+          "won": 2,
+          "draw": 1,
+          "lost": 0,
+          "goals_for": 5,
+          "goals_against": 2,
+          "goal_difference": 3,
+          "points": 7
+        }
       ]
     }
   ]
@@ -386,19 +402,24 @@ Agenda, resultados e partidas ao vivo.
 
 Query params (todos opcionais):
 
-| Parâmetro   | Tipo           | Exemplo                 | Descrição                               |
-| ----------- | -------------- | ----------------------- | --------------------------------------- |
-| `teams`     | string (multi) | `?teams=Brazil`         | Filtra por nome de time (repetível)     |
-| `date_from` | date           | `?date_from=2026-06-20` | Data inicial (deve vir com `date_to`)   |
-| `date_to`   | date           | `?date_to=2026-06-20`   | Data final (deve vir com `date_from`)   |
+| Parâmetro   | Tipo           | Exemplo                 | Descrição                                    |
+| ----------- | -------------- | ----------------------- | -------------------------------------------- |
+| `teams`     | string (multi) | `?teams=Brazil`         | Filtra por nome de time (repetível)          |
+| `date_from` | date           | `?date_from=2026-06-20` | Data inicial (deve vir com `date_to`)        |
+| `date_to`   | date           | `?date_to=2026-06-20`   | Data final (deve vir com `date_from`)        |
 | `status`    | enum           | `?status=IN_PLAY`       | `SCHEDULED`, `IN_PLAY`, `PAUSED`, `FINISHED` |
 
 ```json
 {
   "matches": [
-    { "utc_date": "2026-06-20T18:00:00Z", "home_team": "Brazil",
-      "away_team": "France", "score": { "home": 2, "away": 1 },
-      "status": "FINISHED", "stage": "Group Stage" }
+    {
+      "utc_date": "2026-06-20T18:00:00Z",
+      "home_team": "Brazil",
+      "away_team": "France",
+      "score": { "home": 2, "away": 1 },
+      "status": "FINISHED",
+      "stage": "Group Stage"
+    }
   ]
 }
 ```
@@ -410,7 +431,13 @@ Artilheiros da Copa 2026.
 ```json
 {
   "scorers": [
-    { "position": 1, "player": "Vinicius Jr.", "team": "Brazil", "goals": 4, "assists": 2 }
+    {
+      "position": 1,
+      "player": "Vinicius Jr.",
+      "team": "Brazil",
+      "goals": 4,
+      "assists": 2
+    }
   ]
 }
 ```
@@ -425,8 +452,16 @@ Carrega o histórico de conversa de um chat.
   "last_teams": ["Brazil", "Argentina"],
   "preferred_language": "pt",
   "history": [
-    { "role": "user", "text": "Brasil x Argentina quem ganha?", "ts": "2026-06-20T15:00:00" },
-    { "role": "agent", "text": "Historicamente...", "ts": "2026-06-20T15:00:01" }
+    {
+      "role": "user",
+      "text": "Brasil x Argentina quem ganha?",
+      "ts": "2026-06-20T15:00:00"
+    },
+    {
+      "role": "agent",
+      "text": "Historicamente...",
+      "ts": "2026-06-20T15:00:01"
+    }
   ]
 }
 ```
@@ -435,13 +470,13 @@ Carrega o histórico de conversa de um chat.
 
 Salva um turno de conversa. Body JSON:
 
-| Campo                | Tipo   | Obrigatório | Descrição                          |
-| -------------------- | ------ | ----------- | ---------------------------------- |
-| `user_msg`           | string | Sim         | Mensagem do usuário                |
-| `agent_rep`          | string | Sim         | Resposta do agente                 |
-| `team_a`             | string | Não         | Primeiro time (para `last_teams`)  |
-| `team_b`             | string | Não         | Segundo time (para `last_teams`)   |
-| `preferred_language` | string | Não         | Idioma detectado (`"pt"`, `"en"`)  |
+| Campo                | Tipo   | Obrigatório | Descrição                         |
+| -------------------- | ------ | ----------- | --------------------------------- |
+| `user_msg`           | string | Sim         | Mensagem do usuário               |
+| `agent_rep`          | string | Sim         | Resposta do agente                |
+| `team_a`             | string | Não         | Primeiro time (para `last_teams`) |
+| `team_b`             | string | Não         | Segundo time (para `last_teams`)  |
+| `preferred_language` | string | Não         | Idioma detectado (`"pt"`, `"en"`) |
 
 ---
 
@@ -503,17 +538,17 @@ consultar a API. O status retornado ao usuário continua sendo 502.
 
 ## Arquivos do agente
 
-| Arquivo                                       | Função                                                                   |
-| --------------------------------------------- | ------------------------------------------------------------------------ |
-| `agents/world-cup-specialist/AGENTS.md`       | Prompt completo: loop de turn (Steps 1–4), persona, princípios e constraints. Arquivo único, sem imports externos. |
-| `agents/world-cup-specialist/agent.yaml`      | Config do Genie: `model: sonnet`, `promptMode: append`                   |
-| `scripts/setup.sh`                            | Install idempotente (`make install`)                                     |
-| `scripts/register-agent.sh`                   | Conexão Genie ↔ Omni idempotente (`make wire`)                           |
-| `scripts/start-genie.sh`                      | Sobe genie serve + garante postgres (:5432)                              |
-| `scripts/reload-agent.sh`                     | Reset de sessões (`make reload-agent`)                                   |
-| `scripts/status.sh` · `stop.sh` · `clean.sh` | Ciclo de vida (`make status` / `stop` / `clean`)                         |
-| `scripts/common.sh`                           | Helpers e probes compartilhados (portas, health checks)                  |
-| `.claude/agents/world-cup-specialist.md`      | Symlink → `AGENTS.md`. Torna o agente resolvível por `claude --agent` (≥ 2.1.191). Não apagar. |
+| Arquivo                                      | Função                                                                                                             |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `agents/world-cup-specialist/AGENTS.md`      | Prompt completo: loop de turn (Steps 1–4), persona, princípios e constraints. Arquivo único, sem imports externos. |
+| `agents/world-cup-specialist/agent.yaml`     | Config do Genie: `model: sonnet`, `promptMode: append`                                                             |
+| `scripts/setup.sh`                           | Install idempotente (`make install`)                                                                               |
+| `scripts/register-agent.sh`                  | Conexão Genie ↔ Omni idempotente (`make wire`)                                                                     |
+| `scripts/start-genie.sh`                     | Sobe genie serve + garante postgres (:5432)                                                                        |
+| `scripts/reload-agent.sh`                    | Reset de sessões (`make reload-agent`)                                                                             |
+| `scripts/status.sh` · `stop.sh` · `clean.sh` | Ciclo de vida (`make status` / `stop` / `clean`)                                                                   |
+| `scripts/common.sh`                          | Helpers e probes compartilhados (portas, health checks)                                                            |
+| `.claude/agents/world-cup-specialist.md`     | Symlink → `AGENTS.md`. Torna o agente resolvível por `claude --agent` (≥ 2.1.191). Não apagar.                     |
 
 ---
 

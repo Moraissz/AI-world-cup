@@ -15,7 +15,7 @@ The stack:
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env  # set FOOTBALL_IO_SPORTS_API_KEY and OMNI_API_KEY
+cp .env.example .env  # set FOOTBALL_IO_SPORTS_API_KEY, FOOTBALL_DATA_ORG_API_KEY and OMNI_API_KEY
 make start            # starts Omni (postgres + NATS), genie serve (autopg), and FastAPI
 ```
 
@@ -24,6 +24,11 @@ API docs at `http://localhost:8000/docs`.
 ## Key endpoints
 
 - `GET /football/head-to-head?name_team_a=Brazil&name_team_b=France`
+- `GET /football/world-cup/standings`
+- `GET /football/world-cup/matches` (filtros: teams, date_from/date_to, status)
+- `GET /football/world-cup/top-scorers`
+- `GET  /memory/{chat_id}`
+- `POST /memory/{chat_id}`
 
 ## Tests
 
@@ -63,6 +68,7 @@ omni agents list
 | Variable | Description |
 |---|---|
 | `FOOTBALL_IO_SPORTS_API_KEY` | API key for api-sports.io |
+| `FOOTBALL_DATA_ORG_API_KEY` | API key for football-data.org (standings, matches, top-scorers) |
 | `OMNI_API_URL` | Omni API base URL (default: `http://localhost:8882`) |
 | `OMNI_API_KEY` | Omni API authentication key |
 
