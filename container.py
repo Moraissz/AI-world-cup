@@ -20,6 +20,7 @@ async def _create_redis(host: str, port: int, password: str):
         port=port,
         password=password or None,
         decode_responses=True,
+        ssl=True,
     )
     try:
         yield client
