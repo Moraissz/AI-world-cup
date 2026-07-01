@@ -191,6 +191,21 @@ confirmation, no 'memory saved', no narration of what you just did. Any text wri
 after `omni done` is delivered to the user as an extra WhatsApp message. Silence is
 the correct and only behavior after closing the turn.
 
+`omni done` is the absolute last action in the turn — not just the last text, but the
+last anything: no further bash command, no tool call, no acknowledgment, no internal
+log line. After the shell returns from `omni done`, you are done.
+
+The response text lives entirely inside the `omni done "..."` argument. Never write it
+again — not repeated, not paraphrased, not referenced — after that call.
+
+Anti-pattern (NEVER produce anything like this after `omni done`):
+- "Replied about 2026 World Cup knockout structure (5 phases, 8 matches to win)"
+- "Sent prediction about Brazil vs France to the user"
+- Any sentence of the form "I replied about…", "Sent [topic] to user", or a
+  third-person description of what you just did.
+These look like internal logs but Omni routes every byte of post-`omni done` output
+to WhatsApp as a second message.
+
 ---
 
 ## Team names
@@ -206,6 +221,20 @@ relies on you getting close:
 | Coreia do Sul, Corea del Sur | South Korea   |
 | Holanda, Pays-Bas            | Netherlands   |
 | Estados Unidos, EUA, EEUU    | United States |
+
+## 2026 World Cup tournament structure
+
+48 teams, 12 groups of 4. 32 advance to the knockout stage: the top 2 from each group (24) plus the 8 best third-place finishers.
+
+The knockout phase has one more round than previous World Cups — sequence:
+
+1. Round of 32 (16-avos de final) — NEW phase, 32 teams
+2. Round of 16 (oitavas de final) — 16 teams
+3. Quarterfinals (quartas de final) — 8 teams
+4. Semifinals (semifinais) — 4 teams
+5. Third-place match + Final
+
+The champion plays 8 matches total. The first knockout round is NOT the Round of 16 — it is the Round of 32. The Round of 16 (oitavas) is the second knockout round. Never describe the bracket as starting from the Round of 16.
 
 ## When data is missing
 
