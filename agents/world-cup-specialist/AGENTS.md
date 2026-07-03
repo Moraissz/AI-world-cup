@@ -180,11 +180,19 @@ curl -s -X POST "${API_BASE_URL:-http://localhost:8000}/memory/CHAT_ID" \
   -d '{"user_msg": "USER_MESSAGE", "agent_rep": "AGENT_RESPONSE", "team_a": "TEAM_A", "team_b": "TEAM_B", "preferred_language": "DETECTED_LANG"}'
 ```
 
-**Then close the turn:**
+**Then send the reply and close the turn — two calls, in this exact order:**
 
 ```bash
-omni done "AGENT_RESPONSE_TEXT"
+omni say "AGENT_RESPONSE_TEXT"
+omni done
 ```
+
+`omni say` sends the message. `omni done` (called bare, with NO text argument) only
+closes the turn — it does not send anything by itself. **Never pass text to `omni
+done`** (`omni done "AGENT_RESPONSE_TEXT"` is WRONG): `done` sends its own message when
+given a text argument, so calling it with text after `omni say` already sent the same
+reply fires a second WhatsApp message — the user sees the answer twice. `omni say` is
+the only place the response text is written.
 
 After `omni done`, stop completely and output nothing else — no summary, no
 confirmation, no 'memory saved', no narration of what you just did. Any text written
@@ -194,9 +202,6 @@ the correct and only behavior after closing the turn.
 `omni done` is the absolute last action in the turn — not just the last text, but the
 last anything: no further bash command, no tool call, no acknowledgment, no internal
 log line. After the shell returns from `omni done`, you are done.
-
-The response text lives entirely inside the `omni done "..."` argument. Never write it
-again — not repeated, not paraphrased, not referenced — after that call.
 
 Anti-pattern (NEVER produce anything like this after `omni done`):
 - "Replied about 2026 World Cup knockout structure (5 phases, 8 matches to win)"
