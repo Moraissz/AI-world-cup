@@ -9,7 +9,7 @@ from app.services.football_service import FootballService
 from app.services.memory_service import MemoryService
 
 
-async def _create_redis(host: str, port: int, password: str):
+async def _create_redis(host: str, port: int, password: str, use_ssl: bool):
     # Redis is optional: when REDIS_HOST is unset, no client is created and
     # None is injected. Downstream (cache, memory_service) degrade gracefully.
     if not host:
@@ -20,7 +20,13 @@ async def _create_redis(host: str, port: int, password: str):
         port=port,
         password=password or None,
         decode_responses=True,
-        ssl=True,
+        # TLS only when the target Redis speaks it (e.g. managed cloud Redis).
+        # Against a plain-TCP Redis the handshake never completes, so the
+        # socket timeouts below are the safety net that turns a hang into a
+        # RedisError the cache/memory layers already know how to absorb.
+        ssl=use_ssl,
+        socket_connect_timeout=2,
+        socket_timeout=2,
     )
     try:
         yield client
@@ -42,6 +48,7 @@ class AppContainer(containers.DeclarativeContainer):
         host=os.getenv("REDIS_HOST"),
         port=int(os.getenv("REDIS_PORT", 6379)),
         password=os.getenv("REDIS_PASSWORD", ""),
+        use_ssl=os.getenv("REDIS_SSL", "false").lower() in ("1", "true", "yes"),
     )
 
     football_io_sports_client = providers.Singleton(
